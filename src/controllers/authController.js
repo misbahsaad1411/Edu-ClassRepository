@@ -100,6 +100,7 @@ exports.login = async (req, res, next) => {
         // Debug: Log admin emails and login attempt
         console.log('ADMIN_EMAILS:', ADMIN_EMAILS);
         console.log('Login attempt:', email);
+        console.log('Received password:', password);
 
         let result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
         // If not found, try admin emails
