@@ -49,60 +49,13 @@ exports.register = async (req, res, next) => {
         // --- STEP C: CREATE USER ---
         const hash = await bcrypt.hash(password, 10);
         const role = isAdminEmail ? 'admin' : 'student';
-
-        // We insert 'null' for verification_token because we are using stateless JWTs
+        // Directly set is_verified to true and skip email verification
         const result = await pool.query(
             `INSERT INTO users (student_id, name, email, password, department, gender, semester, is_verified, verification_token, role) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-            [student_id, name, normalizedEmail, hash, department, gender || null, semester || null, false, null, role]
+            [student_id, name, normalizedEmail, hash, department, gender || null, semester || null, true, null, role]
         );
-        
-        const userId = result.rows[0].id;
-
-        // --- STEP D: GENERATE JWT TOKEN ---
-        // This token is valid for 1 day and contains the User ID
-        const emailToken = jwt.sign(
-            { id: userId }, 
-            JWT_SECRET, 
-            { expiresIn: '1d' }
-        );
-        
-        // --- STEP E: SEND EMAIL (Spam-Proofing) ---
-        const verificationLink = `http://localhost:3000/api/auth/verify/${emailToken}`;
-        
-        const mailOptions = {
-            from: `"EDU ClassRepo" <${EMAIL_USER}>`,
-            to: normalizedEmail,
-            subject: 'Verify Your Account - EDU ClassRepo',
-            // [CRITICAL] Plain text version acts as a spam filter fallback
-            text: `Welcome, ${name}!\n\nPlease verify your account by clicking this link:\n${verificationLink}\n\nThis link expires in 24 hours.`,
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #2c3e50;">Welcome to EDU ClassRepo</h2>
-                    <p>Hello <strong>${name}</strong>,</p>
-                    <p>Please verify your university account to access course materials.</p>
-                    <div style="margin: 25px 0;">
-                        <a href="${verificationLink}" style="background-color: #3498db; color: white; padding: 12px 25px; text-decoration: none; border-radius: 4px; font-weight: bold;">Verify Email Address</a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">Or paste this link into your browser:<br>
-                    <a href="${verificationLink}" style="color: #3498db;">${verificationLink}</a></p>
-                </div>
-            `
-        };
-        
-        await transporter.sendMail(mailOptions);
-
-        // --- STEP F: NOTIFY ADMINS ---
-        // Send a separate email to admins (fire and forget)
-        const adminAlert = {
-            from: `"System Bot" <${EMAIL_USER}>`,
-            to: ADMIN_EMAILS.join(','),
-            subject: `New User Registration: ${name}`,
-            text: `User: ${name}\nEmail: ${normalizedEmail}\nDept: ${department}\nStatus: Pending Verification`
-        };
-        transporter.sendMail(adminAlert).catch(err => console.error("Admin alert failed", err));
-        
-        res.json({ message: 'Registration successful! Check your email for the verification link.' });
+        res.json({ message: 'Registration successful! You can now log in.' });
     } catch (err) {
         if (err.code === '23505') return res.status(400).json({ error: 'Email already registered' });
         next(err);
@@ -144,13 +97,14 @@ exports.login = async (req, res, next) => {
         const { email, password, userType } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Email/Pass required' });
 
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+        let result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+        // If not found, try admin emails
+        if (result.rows.length === 0 && ADMIN_EMAILS.includes(email.toLowerCase())) {
+            result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+        }
         if (result.rows.length === 0) return res.status(401).json({ error: 'User not found' });
 
         const user = result.rows[0];
-
-        // Ensure user is verified
-        if (!user.is_verified) return res.status(403).json({ error: 'Please verify your email first.' });
 
         const validPass = await bcrypt.compare(password, user.password);
         if (!validPass) return res.status(401).json({ error: 'Invalid password' });
