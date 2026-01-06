@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - EDU ClassRepo</title>
+    <link rel="stylesheet" href="css/style.css"> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <a href="dashboard.html" class="logo" style="text-decoration:none">
+                <i class="fas fa-book-reader"></i> EDU ClassRepo
+            </a>
+            <div class="user-menu">
+                <div class="user-info">
+                    <div class="user-name" id="user-name">-</div>
+                    <div class="user-role" id="user-role">-</div>
+                </div>
+                <a href="settings.html" class="profile-avatar"><i class="fas fa-user-circle" style="font-size:24px;color:#5c6b7a"></i></a>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <nav class="sidebar"></nav>
+
+            <main class="main-content">
+                <div class="page-banner">
+                    <h1><i class="fas fa-tasks"></i> Pending File Approvals</h1>
+                    <p id="pending-count">0 pending</p>
+                </div>
+
+                <div class="file-list" id="files">
+                    <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><h3>Loading...</h3></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="modal" id="rename-modal">
+        <div class="modal-content" style="max-width:400px">
+            <div class="modal-header">
+                <h3>Rename File</h3>
+                <button class="modal-close" onclick="closeModal('rename-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="rename-form" onsubmit="handleRename(event)">
+                    <div class="form-group">
+                        <label>New File Name</label>
+                        <input type="text" class="form-input" id="new-name" required>
+                        <input type="hidden" id="rename-id">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%"><i class="fas fa-save"></i> Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script> <script>
+        /* Admin - CRUD for Pending Files */
+        const user = checkAuth();
+        
+        // Redirect non-admin
+        if (user?.role !== 'admin') window.location.href = 'dashboard.html';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadHeader();
+            loadSidebar('admin');
+            await loadData();
+        });
+
+        // READ - Load pending files
+        async function loadData() {
+            const files = await loadPendingFiles();
+            document.getElementById('pending-count').textContent = `${files?.length || 0} pending`;
+            render(files);
+        }
+
+        // Render
+        function render(files) {
+            const container = document.getElementById('files');
+            
+            if (!files?.length) {
+                container.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color:var(--success)"></i><h3>All caught up!</h3><p>No files waiting for approval.</p></div>';
+                return;
+            }
+            
+            container.innerHTML = files.map(f => {
+                const icon = getFileIcon(f.file_name);
+                const size = f.file_size ? (f.file_size / 1024).toFixed(1) + ' KB' : '';
+                return \
+                    `<div class="file-item">
+                        <div class="file-icon ${icon.class}"><i class="fas ${icon.icon}"></i></div>
+                        <div class="file-info">
+                            <div class="file-name">${f.file_name}</div>
+                            <div class="file-meta">By <strong>${f.uploader_name}</strong> • ${size}</div>
+                            <div class="course-tag"><i class="fas fa-book"></i> ${f.course_code}: ${f.course_title}</div>
+                        </div>
+                        <div class="approval-actions">
+                            <a href="/uploads/${f.file_path}" target="_blank" class="btn btn-secondary btn-small" title="View" > <i class="fas fa-eye"></i></a>
+                            <a href="/uploads/${f.file_path}" download class="btn btn-secondary btn-small" title="Download"><i class="fas fa-download"></i></a>
+                            <button class="btn btn-secondary btn-small" onclick="openRename(${f.id},'${f.file_name.replace(/'/g,"'")}')" title="Rename" ><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-success btn-small" onclick="handleApprove(${f.id})"><i class="fas fa-check"></i></button>
+                            <button class="btn btn-danger btn-small" onclick="handleReject(${f.id})"><i class="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // UPDATE - Approve
+        async function handleApprove(id) {
+            if (await approveFile(id)) {
+                alert('File approved!');
+                await loadData();
+            }
+        }
+
+        // UPDATE - Rename
+        function openRename(id, name) {
+            document.getElementById('rename-id').value = id;
+            document.getElementById('new-name').value = name;
+            openModal('rename-modal');
+        }
+
+        async function handleRename(e) {
+            e.preventDefault();
+            const id = document.getElementById('rename-id').value;
+            const name = document.getElementById('new-name').value.trim();
+            
+            const result = await api(`/files/${id}/rename`, {
+                method: 'PUT',
+                body: JSON.stringify({ newName: name })
+            });
+            
+            if (result.error) return alert(result.error);
+            closeModal('rename-modal');
+            alert('File renamed!');
+            await loadData();
+        }
+
+        // DELETE - Reject
+        async function handleReject(id) {
+            if (await rejectFile(id)) {
+                alert('File rejected');
+                await loadData();
+            }
+        }
+    </script>
+</body>
+</html>

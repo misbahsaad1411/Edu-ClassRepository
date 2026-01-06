@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course Files - EDU ClassRepo</title>
+    <link rel="stylesheet" href="css/style.css"> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <a href="dashboard.html" class="logo" style="text-decoration:none">
+                <i class="fas fa-book-reader"></i> EDU ClassRepo
+            </a>
+            <div class="user-menu">
+                <div class="user-info">
+                    <div class="user-name" id="user-name">-</div>
+                    <div class="user-role" id="user-role">-</div>
+                </div>
+                <a href="settings.html" class="profile-avatar"><i class="fas fa-user-circle" style="font-size:24px;color:#5c6b7a"></i></a>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <nav class="sidebar"></nav>
+
+            <main class="main-content">
+                <a href="my-courses.html" class="back-link"><i class="fas fa-arrow-left"></i> Back to My Courses</a>
+                
+                <div class="page-banner" id="banner">
+                    <h1 id="course-title">Loading...</h1>
+                    <p id="course-meta"></p>
+                </div>
+                
+                <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+                    <button class="btn btn-primary" onclick="openModal('upload-modal')">
+                        <i class="fas fa-upload"></i> Upload Notes
+                    </button>
+                </div>
+
+                <div class="file-list" id="files">
+                    <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><h3>Loading...</h3></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="modal" id="upload-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Notes</h3>
+                <button class="modal-close" onclick="closeModal('upload-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="upload-form" onsubmit="handleUpload(event)">
+                    <div class="form-group">
+                        <label>Select File</label>
+                        <input type="file" class="form-input" id="file-input" required style="padding:10px;cursor:pointer">
+                    </div>
+                    <div class="alert alert-warning" id="pending-notice">
+                        <i class="fas fa-info-circle"></i> File will be reviewed by admin before becoming visible.
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%">
+                        <i class="fas fa-cloud-upload-alt"></i> Upload
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script> <script>
+        /* Course Files - CRUD for Files */
+        const user = checkAuth();
+        const courseId = parseInt(new URLSearchParams(location.search).get('id'));
+        let course = null;
+        const deptColors = { CSE:'#5c6b7a', EEE:'#6b7a5c', BBA:'#7a6b5c', ENG:'#5c7a7a', ECO:'#7a705c', GED:'#6b6b7a' };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadHeader();
+            loadSidebar('');
+            if (user?.role === 'admin') document.getElementById('pending-notice').classList.add('hidden');
+            await loadData();
+        });
+
+        // READ - Load course & files
+        async function loadData() {
+            course = await api(`/courses/${courseId}`);
+            if (!course || course.error) {
+                document.getElementById('course-title').textContent = 'Course Not Found';
+                return;
+            }
+            
+            // Set banner
+            const color = deptColors[course.department] || '#722f37';
+            document.getElementById('banner').style.background = `linear-gradient(135deg, ${color}, ${darken(color)})`;
+            document.getElementById('course-title').textContent = `${course.code}: ${course.title}`;
+            document.getElementById('course-meta').innerHTML = `&lt;i class="fas fa-user-tie"&gt;&lt;/i&gt; ${course.instructor || 'TBA'} • &lt;i class="fas fa-building"&gt;&lt;/i&gt; ${course.department}`;
+            document.title = `${course.code} - EDU ClassRepo`;
+            
+            await renderFiles();
+        }
+
+        // Render files
+        async function renderFiles() {
+            const files = await loadCourseFiles(courseId);
+            const container = document.getElementById('files');
+            
+            if (!files?.length) {
+                container.innerHTML = '&lt;div class="empty-state"&gt;&lt;i class="fas fa-folder-open"&gt;&lt;/i&gt;&lt;h3&gt;No files yet&lt;/h3&gt;&lt;p&gt;Be the first to share notes!&lt;/p&gt;&lt;/div&gt;';
+                return;
+            }
+            
+            container.innerHTML = files.map(f => {
+                const icon = getFileIcon(f.file_name);
+                const size = f.file_size ? (f.file_size / 1024).toFixed(1) + ' KB' : '';
+                return `
+                    &lt;div class="file-item"&gt;
+                        &lt;div class="file-icon ${icon.class}"&gt;&lt;i class="fas ${icon.icon}"&gt;&lt;/i&gt;&lt;/div&gt;
+                        &lt;div class="file-info"&gt;
+                            &lt;div class="file-name"&gt;${f.file_name}&lt;/div&gt;
+                            &lt;div class="file-meta"&gt;${size} • Uploaded by ${f.uploader_name}&lt;/div&gt;
+                        &lt;/div&gt;
+                        &lt;div class="file-actions"&gt;
+                            &lt;a href="/uploads/${f.file_path}" download class="btn btn-secondary btn-small"&gt;&lt;i class="fas fa-download"&gt;&lt;/i&gt;&lt;/a&gt;
+                            ${user?.role === 'admin' ? `&lt;button class="btn btn-danger btn-small" onclick="handleDelete(${f.id})"&gt;&lt;i class="fas fa-trash"&gt;&lt;/i&gt;&lt;/button&gt;` : ''}
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+                `;
+            }).join('');
+        }
+
+        // CREATE - Upload file
+        async function handleUpload(e) {
+            e.preventDefault();
+            const file = document.getElementById('file-input').files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('courseId', courseId);
+            
+            try {
+                const res = await fetch(`${API}/files`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getToken()}` },
+                    body: formData
+                });
+                const data = await res.json();
+                closeModal('upload-modal');
+                document.getElementById('upload-form').reset();
+                alert(data.message || data.error);
+                await renderFiles();
+            } catch (err) {
+                alert('Upload failed');
+            }
+        }
+
+        // DELETE - File
+        async function handleDelete(id) {
+            if (await deleteFile(id)) await renderFiles();
+        }
+
+        // Darken color helper
+        function darken(hex) {
+            const n = parseInt(hex.replace('#',''), 16);
+            const r = Math.max(0, (n &gt;&gt; 16) - 30);
+            const g = Math.max(0, ((n &gt;&gt; 8) & 0xFF) - 30);
+            const b = Math.max(0, (n & 0xFF) - 30);
+            return `#${(1 &lt;&lt; 24 | r &lt;&lt; 16 | g &lt;&lt; 8 | b).toString(16).slice(1)}`;
+        }
+    </script>
+</body>
+</html>

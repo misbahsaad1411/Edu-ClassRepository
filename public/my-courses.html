@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Courses - EDU ClassRepo</title>
+    <link rel="stylesheet" href="css/style.css"> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <a href="dashboard.html" class="logo" style="text-decoration:none">
+                <i class="fas fa-book-reader"></i> EDU ClassRepo
+            </a>
+            <div class="user-menu">
+                <div class="user-info">
+                    <div class="user-name" id="user-name">-</div>
+                    <div class="user-role" id="user-role">-</div>
+                </div>
+                <a href="settings.html" class="profile-avatar"><i class="fas fa-user-circle" style="font-size:24px;color:#5c6b7a"></i></a>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <nav class="sidebar"></nav>
+
+            <main class="main-content">
+                <div class="page-header">
+                    <h1 class="page-title">My Enrolled Courses</h1>
+                    <div class="filter-controls">
+                        <div class="search-box">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="search-input" id="search" placeholder="Search..." onkeyup="render()">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="course-grid" id="grid">
+                    <div class="empty-state" style="grid-column:1/-1"><i class="fas fa-spinner fa-spin"></i><h3>Loading...</h3></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script> <script>
+        /* My Courses - READ & DELETE (Unenroll) */
+        const user = checkAuth();
+        let courses = [];
+        const colors = { CSE:'course-cse', EEE:'course-eee', BBA:'course-bba', ENG:'course-eng', ECO:'course-eco', GED:'course-ged' };
+
+        // Redirect admin
+        if (user?.role === 'admin') window.location.href = 'dashboard.html';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadHeader();
+            loadSidebar('my-courses');
+            await loadData();
+        });
+
+        // READ - Load enrolled courses
+        async function loadData() {
+            courses = await loadEnrollments();
+            render();
+        }
+
+        // Render
+        function render() {
+            const search = document.getElementById('search').value.toLowerCase();
+            let list = courses;
+            if (search) list = list.filter(c => c.code.toLowerCase().includes(search) || c.title.toLowerCase().includes(search));
+            
+            const grid = document.getElementById('grid');
+            if (!list.length) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column:1/-1">
+                        <i class="fas fa-book"></i>
+                        <h3>${search ? 'No matching courses' : 'No courses enrolled'}</h3>
+                        ${!search ? '<a href="dashboard.html" class="btn btn-primary mt-20"><i class="fas fa-search"></i> Browse Courses</a>' : ''}
+                    </div>
+                `;
+                return;
+            }
+            
+            grid.innerHTML = list.map(c => `
+                <div class="course-card ${colors[c.department] || ''}" onclick="location.href='course.html?id=${c.id}'">
+                    <div class="card-header">
+                        <h3>${c.code}: ${c.title}</h3>
+                        <span><i class="fas fa-user-tie"></i> ${c.instructor || 'TBA'}</span>
+                    </div>
+                    <div class="card-body">
+                        <p style="color:var(--text-light);font-size:13px"><i class="fas fa-mouse-pointer"></i> Click to view files</p>
+                    </div>
+                    <div class="card-footer">
+                        <span><i class="fas fa-building"></i> ${c.department}</span>
+                        <button class="btn btn-secondary btn-small" onclick="event.stopPropagation();handleUnenroll(${c.id})">
+                            <i class="fas fa-minus"></i> Unenroll
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // DELETE - Unenroll
+        async function handleUnenroll(id) {
+            if (await unenrollCourse(id)) await loadData();
+        }
+    </script>
+</body>
+</html>

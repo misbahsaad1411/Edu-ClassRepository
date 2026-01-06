@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - EDU ClassRepo</title>
+    <link rel="stylesheet" href="css/style.css"> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <a href="dashboard.html" class="logo" style="text-decoration:none">
+                <i class="fas fa-book-reader"></i> EDU ClassRepo
+            </a>
+            <div class="user-menu">
+                <div class="user-info">
+                    <div class="user-name" id="user-name">-</div>
+                    <div class="user-role" id="user-role">-</div>
+                </div>
+                <a href="settings.html" class="profile-avatar"><i class="fas fa-user-circle" style="font-size:24px;color:#5c6b7a"></i></a>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <nav class="sidebar"></nav>
+
+            <main class="main-content">
+                <div class="page-header">
+                    <h1 class="page-title">Available Courses</h1>
+                    <div class="filter-controls">
+                        <div class="search-box">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="search-input" id="search" placeholder="Search..." onkeyup="render()">
+                        </div>
+                        <select class="filter-select" id="dept-filter" onchange="render()">
+                            <option value="All">All Departments</option>
+                            <option value="CSE">CSE</option>
+                            <option value="EEE">EEE</option>
+                            <option value="BBA">BBA</option>
+                            <option value="ENG">English</option>
+                            <option value="ECO">Economics</option>
+                            <option value="GED">General Education</option>
+                        </select>
+                        <button class="btn btn-primary hidden" id="create-btn" onclick="openModal('create-modal')">
+                            <i class="fas fa-plus"></i> Create Course
+                        </button>
+                    </div>
+                </div>
+
+                <div class="course-grid" id="grid">
+                    <div class="empty-state" style="grid-column:1/-1"><i class="fas fa-spinner fa-spin"></i><h3>Loading...</h3></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="modal" id="create-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Course</h3>
+                <button class="modal-close" onclick="closeModal('create-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="create-form" onsubmit="handleCreate(event)">
+                    <div class="form-group">
+                        <label>Course Code</label>
+                        <input type="text" class="form-input" id="c-code" placeholder="CSE 301" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Course Title</label>
+                        <input type="text" class="form-input" id="c-title" placeholder="Database Systems" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Department</label>
+                            <select class="form-select" id="c-dept" required>
+                                <option value="CSE">CSE</option>
+                                <option value="EEE">EEE</option>
+                                <option value="BBA">BBA</option>
+                                <option value="ENG">English</option>
+                                <option value="ECO">Economics</option>
+                                <option value="GED">General Education</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Instructor</label>
+                            <input type="text" class="form-input" id="c-instructor" placeholder="Name">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%">Create</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script> <script>
+        /* Dashboard - CRUD for Courses */
+        const user = checkAuth();
+        let courses = [];
+        let enrolled = [];
+        const colors = { CSE:'course-cse', EEE:'course-eee', BBA:'course-bba', ENG:'course-eng', ECO:'course-eco', GED:'course-ged' };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadHeader();
+            loadSidebar('dashboard');
+            if (user?.role === 'admin') document.getElementById('create-btn').classList.remove('hidden');
+            await loadData();
+        });
+
+        // READ - Load data
+        async function loadData() {
+            courses = await loadCourses();
+            enrolled = await loadEnrollments();
+            render();
+        }
+
+        // Render courses
+        function render() {
+            const dept = document.getElementById('dept-filter').value;
+            const search = document.getElementById('search').value.toLowerCase();
+            
+            let list = courses;
+            if (dept !== 'All') list = list.filter(c => c.department === dept);
+            if (search) list = list.filter(c => c.code.toLowerCase().includes(search) || c.title.toLowerCase().includes(search));
+            
+            const grid = document.getElementById('grid');
+            if (!list.length) {
+                grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-search"></i><h3>No courses found</h3></div>';
+                return;
+            }
+            
+            grid.innerHTML = list.map(c => {
+                const isEnrolled = enrolled.some(e => e.id === c.id);
+                return `
+                    <div class="course-card ${colors[c.department] || ''}">
+                        <div class="card-header">
+                            <h3>${c.code}: ${c.title}</h3>
+                            <span><i class="fas fa-user-tie"></i> ${c.instructor || 'TBA'}</span>
+                        </div>
+                        <div class="card-body">
+                            ${user?.role === 'admin' 
+                                ? `<button class="btn btn-danger btn-small" onclick="handleDelete(${c.id})"><i class="fas fa-trash"></i> Delete</button>`
+                                : isEnrolled 
+                                    ? `<a href="course.html?id=${c.id}" class="btn btn-secondary btn-small"><i class="fas fa-folder-open"></i> Open</a>`
+                                    : `<button class="btn btn-primary btn-small" onclick="handleEnroll(${c.id})"><i class="fas fa-plus"></i> Enroll</button>`
+                            }
+                        </div>
+                        <div class="card-footer">
+                            <span><i class="fas fa-building"></i> ${c.department}</span>
+                            ${isEnrolled ? '<span class="text-success"><i class="fas fa-check-circle"></i> Enrolled</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // CREATE - New course (Admin)
+        async function handleCreate(e) {
+            e.preventDefault();
+            const result = await createCourse(
+                document.getElementById('c-code').value,
+                document.getElementById('c-title').value,
+                document.getElementById('c-dept').value,
+                document.getElementById('c-instructor').value
+            );
+            if (result.error) return alert(result.error);
+            closeModal('create-modal');
+            document.getElementById('create-form').reset();
+            await loadData();
+            alert('Course created!');
+        }
+
+        // UPDATE - Enroll
+        async function handleEnroll(id) {
+            if (await enrollCourse(id)) await loadData();
+        }
+
+        // DELETE - Course (Admin)
+        async function handleDelete(id) {
+            if (await deleteCourse(id)) await loadData();
+        }
+    </script>
+</body>
+</html>
