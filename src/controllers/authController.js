@@ -97,6 +97,10 @@ exports.login = async (req, res, next) => {
         const { email, password, userType } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Email/Pass required' });
 
+        // Debug: Log admin emails and login attempt
+        console.log('ADMIN_EMAILS:', ADMIN_EMAILS);
+        console.log('Login attempt:', email);
+
         let result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
         // If not found, try admin emails
         if (result.rows.length === 0 && ADMIN_EMAILS.includes(email.toLowerCase())) {
@@ -106,7 +110,12 @@ exports.login = async (req, res, next) => {
 
         const user = result.rows[0];
 
+        // Debug: Log password hash from DB
+        console.log('DB password hash:', user.password);
+
         const validPass = await bcrypt.compare(password, user.password);
+        // Debug: Log result of bcrypt.compare
+        console.log('Password match:', validPass);
         if (!validPass) return res.status(401).json({ error: 'Invalid password' });
 
         // Admin Role Enforcement
