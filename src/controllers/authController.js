@@ -1,19 +1,3 @@
-// TEMPORARY: Direct admin creation route for password compatibility troubleshooting
-exports.createAdminDirect = async (req, res) => {
-    try {
-        const email = 'misbahsaad01@gmail.com';
-        const password = 'admin123';
-        const hash = await bcrypt.hash(password, 10);
-        await pool.query(
-            `INSERT INTO users (student_id, name, email, password, department, role, is_verified)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)` ,
-            ['ADM-003', 'Misbah Saad', email, hash, 'Admin', 'admin', true]
-        );
-        res.json({ message: 'Admin created', email, hash });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
 //
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
